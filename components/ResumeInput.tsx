@@ -47,7 +47,7 @@ export function ResumeInput({
       <div className="actions">
         <p className={error ? "error-text" : "helper-text"}>
           {error ??
-            "Your resume and job description are only sent to the server when you request AI optimization."}
+            "Runs locally in this app with no paid AI key required. Review every suggestion before copying it."}
         </p>
         <button
           className="primary-button"

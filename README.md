@@ -4,16 +4,11 @@ MVP resume ATS optimizer for tailoring Google Docs resume text to a job descript
 
 ## Setup
 
-Create `.env.local`:
-
-```bash
-OPENAI_API_KEY=your_api_key_here
-OPENAI_MODEL=gpt-4.1-mini
-```
-
-Then install dependencies and run:
+Install dependencies and run:
 
 ```bash
 npm install
 npm run dev
 ```
+
+No paid AI API key is required. The MVP uses local rule-based scoring and conservative rewrite suggestions.

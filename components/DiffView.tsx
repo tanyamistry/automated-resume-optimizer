@@ -11,7 +11,7 @@ export function DiffView({ result, onCopy, copyStatus }: DiffViewProps) {
     <section className="panel">
       <div className="optimization-header">
         <div>
-          <h2>AI optimization suggestions</h2>
+          <h2>Optimization suggestions</h2>
           <p className="helper-text">Review before applying anything to your resume.</p>
         </div>
         <button className="secondary-button" type="button" onClick={onCopy}>

@@ -114,8 +114,8 @@ export default function Home() {
         <h1>Resume ATS Optimizer</h1>
         <p>
           Paste your Google Docs resume text and a target job description. The app
-          scores keyword coverage locally, then asks AI for controlled edits that
-          preserve your real experience.
+          scores keyword coverage locally, then creates conservative rule-based
+          suggestions that preserve your real experience.
         </p>
       </header>
 
