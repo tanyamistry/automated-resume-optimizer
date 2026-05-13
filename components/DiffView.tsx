@@ -2,21 +2,45 @@ import type { BulletEdit, OptimizationResult } from "@/lib/types";
 
 type DiffViewProps = {
   result: OptimizationResult;
+  approvedBulletIndexes: number[];
   onCopy: () => void;
+  onDownload: () => void;
+  onToggleBullet: (index: number) => void;
+  onToggleAllBullets: () => void;
   copyStatus: string;
 };
 
-export function DiffView({ result, onCopy, copyStatus }: DiffViewProps) {
+export function DiffView({
+  result,
+  approvedBulletIndexes,
+  onCopy,
+  onDownload,
+  onToggleBullet,
+  onToggleAllBullets,
+  copyStatus
+}: DiffViewProps) {
+  const allApproved =
+    result.bulletEdits.length > 0 &&
+    approvedBulletIndexes.length === result.bulletEdits.length;
+
   return (
     <section className="panel">
       <div className="optimization-header">
         <div>
           <h2>Optimization suggestions</h2>
-          <p className="helper-text">Review before applying anything to your resume.</p>
+          <p className="helper-text">Approve the edits you want before downloading.</p>
         </div>
-        <button className="secondary-button" type="button" onClick={onCopy}>
-          {copyStatus || "Copy Optimized Resume Sections"}
-        </button>
+        <div className="button-row">
+          <button className="secondary-button" type="button" onClick={onToggleAllBullets}>
+            {allApproved ? "Clear Bullet Approvals" : "Approve All Bullets"}
+          </button>
+          <button className="secondary-button" type="button" onClick={onCopy}>
+            {copyStatus || "Copy Approved Sections"}
+          </button>
+          <button className="primary-button" type="button" onClick={onDownload}>
+            Download Optimized Resume
+          </button>
+        </div>
       </div>
 
       <div className="summary-box">
@@ -26,7 +50,13 @@ export function DiffView({ result, onCopy, copyStatus }: DiffViewProps) {
 
       <div className="diff-list">
         {result.bulletEdits.map((edit, index) => (
-          <DiffItem edit={edit} key={`${edit.section}-${index}`} />
+          <DiffItem
+            approved={approvedBulletIndexes.includes(index)}
+            edit={edit}
+            index={index}
+            key={`${edit.section}-${index}`}
+            onToggle={onToggleBullet}
+          />
         ))}
       </div>
 
@@ -50,17 +80,37 @@ export function DiffView({ result, onCopy, copyStatus }: DiffViewProps) {
   );
 }
 
-function DiffItem({ edit }: { edit: BulletEdit }) {
+function DiffItem({
+  edit,
+  index,
+  approved,
+  onToggle
+}: {
+  edit: BulletEdit;
+  index: number;
+  approved: boolean;
+  onToggle: (index: number) => void;
+}) {
   return (
     <article className="diff-item">
       <div className="diff-meta">
         <strong>{edit.section || "Resume bullet"}</strong>
-        <div className="inline-list">
-          {edit.keywordsAdded.map((keyword) => (
-            <span className="tag success" key={keyword}>
-              {keyword}
-            </span>
-          ))}
+        <div className="diff-controls">
+          <label className="approval-toggle">
+            <input
+              checked={approved}
+              type="checkbox"
+              onChange={() => onToggle(index)}
+            />
+            Approve
+          </label>
+          <div className="inline-list">
+            {edit.keywordsAdded.map((keyword) => (
+              <span className="tag success" key={keyword}>
+                {keyword}
+              </span>
+            ))}
+          </div>
         </div>
       </div>
       <div className="diff-columns">

@@ -5,9 +5,11 @@ type ResumeInputProps = {
   jobDescription: string;
   isAnalyzing: boolean;
   isOptimizing: boolean;
+  isExtracting: boolean;
   error?: string;
   onResumeChange: (value: string) => void;
   onJobDescriptionChange: (value: string) => void;
+  onResumeUpload: (file: File) => void;
   onAnalyze: () => void;
 };
 
@@ -16,9 +18,11 @@ export function ResumeInput({
   jobDescription,
   isAnalyzing,
   isOptimizing,
+  isExtracting,
   error,
   onResumeChange,
   onJobDescriptionChange,
+  onResumeUpload,
   onAnalyze
 }: ResumeInputProps) {
   return (
@@ -26,9 +30,23 @@ export function ResumeInput({
       <div className="form-grid">
         <div className="field">
           <label htmlFor="resumeText">Resume text</label>
+          <input
+            accept="application/pdf,.pdf"
+            aria-label="Upload resume PDF"
+            className="file-input"
+            disabled={isExtracting || isAnalyzing || isOptimizing}
+            type="file"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) {
+                onResumeUpload(file);
+              }
+              event.currentTarget.value = "";
+            }}
+          />
           <textarea
             id="resumeText"
-            placeholder="Paste your resume text from Google Docs..."
+            placeholder="Upload a resume PDF or paste your resume text from Google Docs..."
             value={resumeText}
             onChange={(event) => onResumeChange(event.target.value)}
           />
@@ -47,15 +65,21 @@ export function ResumeInput({
       <div className="actions">
         <p className={error ? "error-text" : "helper-text"}>
           {error ??
-            "Runs locally in this app with no paid AI key required. Review every suggestion before copying it."}
+            "Upload a text-based PDF or paste from Google Docs. Review and approve edits before downloading."}
         </p>
         <button
           className="primary-button"
-          disabled={isAnalyzing || isOptimizing}
+          disabled={isExtracting || isAnalyzing || isOptimizing}
           type="button"
           onClick={onAnalyze}
         >
-          {isOptimizing ? "Optimizing..." : isAnalyzing ? "Analyzing..." : "Analyze Resume"}
+          {isExtracting
+            ? "Reading PDF..."
+            : isOptimizing
+              ? "Optimizing..."
+              : isAnalyzing
+                ? "Analyzing..."
+                : "Analyze Resume"}
         </button>
       </div>
     </section>

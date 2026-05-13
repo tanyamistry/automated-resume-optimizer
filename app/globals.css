@@ -125,6 +125,15 @@ button:disabled {
   width: 100%;
 }
 
+.file-input {
+  background: #fbfdff;
+  border: 1px dashed var(--border-strong);
+  border-radius: 8px;
+  color: var(--muted);
+  padding: 10px;
+  width: 100%;
+}
+
 .field textarea:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.13);
@@ -169,6 +178,13 @@ button:disabled {
 
 .secondary-button:hover:not(:disabled) {
   border-color: var(--border-strong);
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
 }
 
 .helper-text,
@@ -342,6 +358,23 @@ button:disabled {
   gap: 8px;
   justify-content: space-between;
   padding: 10px 12px;
+}
+
+.diff-controls {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.approval-toggle {
+  align-items: center;
+  color: var(--muted);
+  display: inline-flex;
+  font-size: 0.9rem;
+  font-weight: 700;
+  gap: 7px;
 }
 
 .diff-columns {

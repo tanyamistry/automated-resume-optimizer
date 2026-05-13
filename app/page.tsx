@@ -7,6 +7,10 @@ import { ResumeInput } from "@/components/ResumeInput";
 import { ScoreCard } from "@/components/ScoreCard";
 import { createLocalAnalysis } from "@/lib/atsScoring";
 import { extractKeywords } from "@/lib/keywordExtractor";
+import {
+  applyApprovedEdits,
+  createApprovedSectionsText
+} from "@/lib/resumeAssembler";
 import type { LocalAnalysis, OptimizationResult } from "@/lib/types";
 
 export default function Home() {
@@ -17,6 +21,8 @@ export default function Home() {
   const [error, setError] = useState<string | undefined>();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isOptimizing, setIsOptimizing] = useState(false);
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [approvedBulletIndexes, setApprovedBulletIndexes] = useState<number[]>([]);
   const [copyStatus, setCopyStatus] = useState("");
 
   const canOptimize = useMemo(
@@ -27,6 +33,7 @@ export default function Home() {
   async function handleAnalyze() {
     setError(undefined);
     setOptimization(null);
+    setApprovedBulletIndexes([]);
     setCopyStatus("");
 
     if (!canOptimize) {
@@ -67,6 +74,7 @@ export default function Home() {
       }
 
       setOptimization(payload.result);
+      setApprovedBulletIndexes(payload.result.bulletEdits.map((_, index) => index));
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -83,29 +91,85 @@ export default function Home() {
       return;
     }
 
-    const text = [
-      "Professional Summary",
-      optimization.summaryRewrite,
-      "",
-      "Suggested Bullet Edits",
-      ...optimization.bulletEdits.flatMap((edit) => [
-        `[${edit.section}]`,
-        edit.optimized,
-        ""
-      ]),
-      "Skills To Add",
-      optimization.skillsEdits.add.join(", ") || "None",
-      "",
-      "Skills To Keep",
-      optimization.skillsEdits.keep.join(", ") || "None",
-      "",
-      "Skills To Review",
-      optimization.skillsEdits.remove.join(", ") || "None"
-    ].join("\n");
-
-    await navigator.clipboard.writeText(text);
+    await navigator.clipboard.writeText(
+      createApprovedSectionsText(optimization, approvedBulletIndexes)
+    );
     setCopyStatus("Copied");
     window.setTimeout(() => setCopyStatus(""), 1800);
+  }
+
+  async function handleResumeUpload(file: File) {
+    setError(undefined);
+    setIsExtracting(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("resume", file);
+
+      const response = await fetch("/api/extract-resume", {
+        method: "POST",
+        body: formData
+      });
+      const payload = (await response.json()) as { text?: string; error?: string };
+
+      if (!response.ok || !payload.text) {
+        throw new Error(payload.error ?? "Could not extract text from this PDF.");
+      }
+
+      setResumeText(payload.text);
+      setAnalysis(null);
+      setOptimization(null);
+      setApprovedBulletIndexes([]);
+    } catch (uploadError) {
+      setError(
+        uploadError instanceof Error
+          ? uploadError.message
+          : "Could not extract text from this PDF."
+      );
+    } finally {
+      setIsExtracting(false);
+    }
+  }
+
+  function handleToggleBullet(index: number) {
+    setApprovedBulletIndexes((current) =>
+      current.includes(index)
+        ? current.filter((item) => item !== index)
+        : [...current, index].sort((a, b) => a - b)
+    );
+  }
+
+  function handleToggleAllBullets() {
+    if (!optimization) {
+      return;
+    }
+
+    setApprovedBulletIndexes((current) =>
+      current.length === optimization.bulletEdits.length
+        ? []
+        : optimization.bulletEdits.map((_, index) => index)
+    );
+  }
+
+  function handleDownload() {
+    if (!optimization) {
+      return;
+    }
+
+    const optimizedResume = applyApprovedEdits(
+      resumeText,
+      optimization,
+      approvedBulletIndexes,
+      true,
+      true
+    );
+    const blob = new Blob([optimizedResume], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "optimized-resume.txt";
+    anchor.click();
+    URL.revokeObjectURL(url);
   }
 
   return (
@@ -114,19 +178,21 @@ export default function Home() {
         <h1>Resume ATS Optimizer</h1>
         <p>
           Paste your Google Docs resume text and a target job description. The app
-          scores keyword coverage locally, then creates conservative rule-based
-          suggestions that preserve your real experience.
+          can read a PDF resume, score keyword coverage locally, then create
+          conservative suggestions that you approve before downloading.
         </p>
       </header>
 
       <ResumeInput
         error={error}
         isAnalyzing={isAnalyzing}
+        isExtracting={isExtracting}
         isOptimizing={isOptimizing}
         jobDescription={jobDescription}
         resumeText={resumeText}
         onAnalyze={handleAnalyze}
         onJobDescriptionChange={setJobDescription}
+        onResumeUpload={handleResumeUpload}
         onResumeChange={setResumeText}
       />
 
@@ -142,9 +208,13 @@ export default function Home() {
 
           {optimization ? (
             <DiffView
+              approvedBulletIndexes={approvedBulletIndexes}
               copyStatus={copyStatus}
               result={optimization}
               onCopy={handleCopy}
+              onDownload={handleDownload}
+              onToggleAllBullets={handleToggleAllBullets}
+              onToggleBullet={handleToggleBullet}
             />
           ) : null}
         </div>
