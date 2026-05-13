@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { PDFParse } from "pdf-parse";
 
+export const runtime = "nodejs";
+
 const MAX_FILE_BYTES = 4 * 1024 * 1024;
+const MIN_EXTRACTED_CHARS = 30;
 
 export async function POST(request: Request) {
   let formData: FormData;
@@ -28,28 +31,44 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Only PDF uploads are supported." }, { status: 400 });
   }
 
-  try {
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const parser = new PDFParse({ data: buffer });
-    const parsed = await parser.getText();
-    await parser.destroy();
-    const text = parsed.text.replace(/\n{3,}/g, "\n\n").trim();
+  let parser: PDFParse | undefined;
 
-    if (text.length < 80) {
+  try {
+    const data = new Uint8Array(await file.arrayBuffer());
+    parser = new PDFParse({ data });
+    const parsed = await parser.getText();
+    const text = normalizeExtractedText(parsed.text);
+
+    if (text.length < MIN_EXTRACTED_CHARS) {
       return NextResponse.json(
         {
           error:
-            "Could not extract enough text from this PDF. Try copying from Google Docs or uploading a text-based PDF."
+            "Could not extract readable text from this PDF. If it is scanned or image-based, export a text-based PDF from Google Docs or paste the resume text."
         },
         { status: 422 }
       );
     }
 
     return NextResponse.json({ text });
-  } catch {
+  } catch (error) {
     return NextResponse.json(
-      { error: "Could not read this PDF. Try exporting it again from Google Docs." },
+      {
+        error:
+          error instanceof Error
+            ? `Could not read this PDF: ${error.message}`
+            : "Could not read this PDF. Try exporting it again from Google Docs."
+      },
       { status: 422 }
     );
+  } finally {
+    await parser?.destroy();
   }
+}
+
+function normalizeExtractedText(text: string): string {
+  return text
+    .replace(/--\s+\d+\s+of\s+\d+\s+--/gi, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }

@@ -65,7 +65,7 @@ export function ResumeInput({
       <div className="actions">
         <p className={error ? "error-text" : "helper-text"}>
           {error ??
-            "Upload a text-based PDF or paste from Google Docs. Review and approve edits before downloading."}
+            "Upload a text-based PDF, not a scanned image PDF, or paste from Google Docs. Review and approve edits before downloading."}
         </p>
         <button
           className="primary-button"

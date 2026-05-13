@@ -419,6 +419,51 @@ button:disabled {
   padding-left: 20px;
 }
 
+.preview-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.resume-paper {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 10px 28px rgba(31, 41, 55, 0.08);
+  color: #111827;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  margin: 0 auto;
+  max-height: 680px;
+  max-width: 820px;
+  overflow: auto;
+  padding: 44px;
+  width: 100%;
+}
+
+.preview-line {
+  min-height: 1.45em;
+  white-space: pre-wrap;
+}
+
+.preview-heading {
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  font-size: 0.86rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  margin-top: 12px;
+  text-transform: uppercase;
+}
+
+.approved-line {
+  background: #ecfdf5;
+  border-left: 3px solid var(--success);
+  margin: 4px -8px;
+  padding: 4px 8px 4px 10px;
+}
+
 @media (max-width: 900px) {
   .form-grid,
   .summary-grid,
@@ -432,5 +477,9 @@ button:disabled {
   .diff-column + .diff-column {
     border-left: 0;
     border-top: 1px solid var(--border);
+  }
+
+  .resume-paper {
+    padding: 24px;
   }
 }

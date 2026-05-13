@@ -18,5 +18,6 @@ No paid AI API key is required. The MVP uses local rule-based scoring and conser
 1. Upload a text-based resume PDF or paste resume text.
 2. Paste the job description.
 3. Review matched, missing, and weak keywords.
-4. Approve individual bullet edits.
-5. Download an optimized `.txt` resume draft for Google Docs.
+4. Preview the resume draft.
+5. Approve individual bullet edits.
+6. Download an optimized `.txt` resume draft for Google Docs.

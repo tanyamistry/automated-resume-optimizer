@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { DiffView } from "@/components/DiffView";
 import { KeywordAnalysis } from "@/components/KeywordAnalysis";
+import { ResumePreview } from "@/components/ResumePreview";
 import { ResumeInput } from "@/components/ResumeInput";
 import { ScoreCard } from "@/components/ScoreCard";
 import { createLocalAnalysis } from "@/lib/atsScoring";
@@ -29,6 +30,19 @@ export default function Home() {
     () => resumeText.trim().length >= 80 && jobDescription.trim().length >= 80,
     [resumeText, jobDescription]
   );
+  const previewText = useMemo(() => {
+    if (!optimization) {
+      return resumeText;
+    }
+
+    return applyApprovedEdits(
+      resumeText,
+      optimization,
+      approvedBulletIndexes,
+      true,
+      true
+    );
+  }, [approvedBulletIndexes, optimization, resumeText]);
 
   async function handleAnalyze() {
     setError(undefined);
@@ -74,7 +88,7 @@ export default function Home() {
       }
 
       setOptimization(payload.result);
-      setApprovedBulletIndexes(payload.result.bulletEdits.map((_, index) => index));
+      setApprovedBulletIndexes([]);
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -207,15 +221,22 @@ export default function Home() {
           </div>
 
           {optimization ? (
-            <DiffView
-              approvedBulletIndexes={approvedBulletIndexes}
-              copyStatus={copyStatus}
-              result={optimization}
-              onCopy={handleCopy}
-              onDownload={handleDownload}
-              onToggleAllBullets={handleToggleAllBullets}
-              onToggleBullet={handleToggleBullet}
-            />
+            <>
+              <ResumePreview
+                approvedBulletIndexes={approvedBulletIndexes}
+                optimization={optimization}
+                previewText={previewText}
+              />
+              <DiffView
+                approvedBulletIndexes={approvedBulletIndexes}
+                copyStatus={copyStatus}
+                result={optimization}
+                onCopy={handleCopy}
+                onDownload={handleDownload}
+                onToggleAllBullets={handleToggleAllBullets}
+                onToggleBullet={handleToggleBullet}
+              />
+            </>
           ) : null}
         </div>
       ) : null}
