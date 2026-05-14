@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import mammoth from "mammoth";
 import { PDFParse } from "pdf-parse";
-import { parseResumeText } from "@/lib/resumeTextParser";
+import { parseDocxToRawText, preserveExtractedText } from "@/lib/docxParser";
+import { parseRawResumeText } from "@/lib/resumeTextParser";
 
 export const runtime = "nodejs";
 
@@ -30,8 +30,7 @@ export async function POST(request: Request) {
 
   try {
     if (lowerName.endsWith(".docx")) {
-      const parsed = await mammoth.extractRawText({ buffer });
-      const text = normalizeExtractedText(parsed.value);
+      const text = await parseDocxToRawText(buffer);
       return parsedResponse(text, "docx", file.name);
     }
 
@@ -40,7 +39,7 @@ export async function POST(request: Request) {
       try {
         parser = new PDFParse({ data: new Uint8Array(buffer) });
         const parsed = await parser.getText();
-        const text = normalizeExtractedText(parsed.text);
+        const text = normalizePdfExtractedText(parsed.text);
         return parsedResponse(text, "pdf", file.name);
       } finally {
         await parser?.destroy();
@@ -79,14 +78,12 @@ function parsedResponse(text: string, fileType: "docx" | "pdf", fileName: string
     fileName,
     fileType,
     rawText: text,
-    document: parseResumeText(text)
+    document: parseRawResumeText(text)
   });
 }
 
-function normalizeExtractedText(text: string): string {
-  return text
+function normalizePdfExtractedText(text: string): string {
+  return preserveExtractedText(text)
     .replace(/--\s+\d+\s+of\s+\d+\s+--/gi, "")
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+    .replace(/[ \t]+\n/g, "\n");
 }

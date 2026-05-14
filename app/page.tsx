@@ -48,6 +48,10 @@ export default function Home() {
         .map((change) => change.targetPath),
     [changes]
   );
+  const parserWarning =
+    currentDoc && currentDoc.unassignedLines.length > 0
+      ? "Some content could not be structured yet"
+      : undefined;
 
   async function handleUpload(file: File) {
     setError(undefined);
@@ -125,6 +129,115 @@ export default function Home() {
     setChanges((current) =>
       current.map((change) => (change.id === id ? { ...change, status } : change))
     );
+  }
+
+  function handleAssignUnassignedLine(
+    index: number,
+    target: "summary" | "experience" | "projects" | "education" | "skills"
+  ) {
+    setBaseDoc((current) => {
+      if (!current) {
+        return current;
+      }
+
+      const line = current.unassignedLines[index];
+      if (!line) {
+        return current;
+      }
+
+      const next: ResumeDocument = {
+        ...current,
+        contact: { ...current.contact },
+        experience: current.experience.map((item) => ({
+          ...item,
+          bullets: [...item.bullets]
+        })),
+        projects: current.projects.map((item) => ({
+          ...item,
+          bullets: [...item.bullets]
+        })),
+        education: current.education.map((item) => ({
+          ...item,
+          details: item.details ? [...item.details] : undefined
+        })),
+        skills: Object.fromEntries(
+          Object.entries(current.skills).map(([category, values]) => [category, [...values]])
+        ),
+        unassignedLines: current.unassignedLines.filter((_, itemIndex) => itemIndex !== index),
+        parserDebug: { ...current.parserDebug }
+      };
+
+      const cleanLine = line.replace(/^[•●\-*]\s+/, "").trim();
+
+      if (target === "summary") {
+        next.summary = [next.summary, cleanLine].filter(Boolean).join(" ");
+      }
+
+      if (target === "experience") {
+        if (line.match(/^[•●\-*]\s+/)) {
+          const item =
+            next.experience[next.experience.length - 1] ??
+            next.experience[
+              next.experience.push({
+                company: "Manually Assigned Experience",
+                title: "",
+                location: "",
+                dates: "",
+                bullets: []
+              }) - 1
+            ];
+          item.bullets.push(cleanLine);
+        } else {
+          next.experience.push({
+            company: cleanLine,
+            title: "",
+            location: "",
+            dates: "",
+            bullets: []
+          });
+        }
+      }
+
+      if (target === "projects") {
+        if (line.match(/^[•●\-*]\s+/)) {
+          const item =
+            next.projects[next.projects.length - 1] ??
+            next.projects[
+              next.projects.push({
+                name: "Manually Assigned Project",
+                bullets: []
+              }) - 1
+            ];
+          item.bullets.push(cleanLine);
+        } else {
+          next.projects.push({ name: cleanLine, bullets: [] });
+        }
+      }
+
+      if (target === "education") {
+        if (next.education.length === 0) {
+          next.education.push({
+            institution: cleanLine,
+            degree: "",
+            location: "",
+            dates: "",
+            details: []
+          });
+        } else {
+          const item = next.education[next.education.length - 1];
+          item.details = [...(item.details ?? []), cleanLine];
+        }
+      }
+
+      if (target === "skills") {
+        next.skills.Skills = [
+          ...(next.skills.Skills ?? []),
+          ...cleanLine.split(",").map((skill) => skill.trim()).filter(Boolean)
+        ];
+      }
+
+      return next;
+    });
   }
 
   function handleManualEdit(id: string, value: string) {
@@ -228,6 +341,18 @@ export default function Home() {
             </div>
           ) : null}
 
+          {currentDoc ? (
+            <div className="debug-counters">
+              <span>Total lines: {currentDoc.parserDebug.totalLinesExtracted}</span>
+              <span>Bullets: {currentDoc.parserDebug.bulletsDetected}</span>
+              <span>Sections: {currentDoc.parserDebug.sectionsDetected}</span>
+              <span>Unassigned: {currentDoc.unassignedLines.length}</span>
+              <span>Dropped: {currentDoc.parserDebug.droppedLinesCount}</span>
+            </div>
+          ) : null}
+
+          {parserWarning ? <p className="warning-text">{parserWarning}</p> : null}
+
           <label className="field" htmlFor="jobDescription">
             <span>Job description</span>
             <textarea
@@ -286,7 +411,11 @@ export default function Home() {
 
           {activeTab === "preview" ? (
             currentDoc ? (
-              <DocumentResumePreview doc={currentDoc} changedPaths={changedPaths} />
+              <DocumentResumePreview
+                doc={currentDoc}
+                changedPaths={changedPaths}
+                onAssignUnassignedLine={handleAssignUnassignedLine}
+              />
             ) : (
               <EmptyState />
             )

@@ -23,3 +23,5 @@ No paid AI API key is required. The MVP uses local rule-based scoring and conser
 6. Export an updated DOCX.
 
 DOCX export patches text inside the original `.docx` package instead of regenerating the whole resume from scratch. PDF export is not implemented yet.
+
+The parser shows the complete raw extracted text, debug counters, and any unassigned lines so extracted resume content does not disappear silently.

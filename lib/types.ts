@@ -71,6 +71,15 @@ export type ResumeDocument = {
   projects: ResumeProject[];
   education: ResumeEducation[];
   skills: Record<string, string[]>;
+  unassignedLines: string[];
+  parserDebug: ResumeParserDebug;
+};
+
+export type ResumeParserDebug = {
+  totalLinesExtracted: number;
+  bulletsDetected: number;
+  sectionsDetected: number;
+  droppedLinesCount: number;
 };
 
 export type ResumeExperience = {

@@ -75,7 +75,9 @@ export function resumeDocumentToPlainText(doc: ResumeDocument): string {
       (item) => `${item.institution} ${item.degree} ${item.location} ${item.dates}`
     ),
     "Skills",
-    ...Object.entries(doc.skills).map(([category, skills]) => `${category}: ${skills.join(", ")}`)
+    ...Object.entries(doc.skills).map(([category, skills]) => `${category}: ${skills.join(", ")}`),
+    "Unassigned Lines",
+    ...doc.unassignedLines
   ]
     .filter(Boolean)
     .join("\n");
@@ -93,7 +95,9 @@ export function cloneResumeDocument(doc: ResumeDocument): ResumeDocument {
     })),
     skills: Object.fromEntries(
       Object.entries(doc.skills).map(([category, values]) => [category, [...values]])
-    )
+    ),
+    unassignedLines: [...doc.unassignedLines],
+    parserDebug: { ...doc.parserDebug }
   };
 }
 

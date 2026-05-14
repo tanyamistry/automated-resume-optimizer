@@ -2,63 +2,100 @@ import type { ResumeDocument, ResumeEducation, ResumeExperience, ResumeProject }
 
 const SECTION_ALIASES = {
   summary: ["summary", "professional summary", "profile"],
-  experience: ["experience", "work experience", "professional experience", "employment"],
-  projects: ["projects", "technical projects", "project experience"],
-  education: ["education"],
-  skills: ["skills", "technical skills", "technologies"]
+  experience: [
+    "experience",
+    "work experience",
+    "professional experience",
+    "employment",
+    "employment experience"
+  ],
+  projects: ["projects", "technical projects", "project experience", "personal projects"],
+  education: ["education", "educational background"],
+  skills: ["skills", "technical skills", "technologies", "core skills"]
 } as const;
 
 type SectionName = keyof typeof SECTION_ALIASES;
 
-export function parseResumeText(text: string): ResumeDocument {
-  const lines = normalizeLines(text);
-  const sections = splitIntoSections(lines);
+type ParsedSections = Record<SectionName, string[]>;
+
+export function parseRawResumeText(rawText: string): ResumeDocument {
+  const lines = toContentLines(rawText);
+  const bulletsDetected = lines.filter(isBullet).length;
+  const sectionEvents = lines
+    .map((line, index) => ({ index, section: detectSection(line) }))
+    .filter((event): event is { index: number; section: SectionName } =>
+      Boolean(event.section)
+    );
+  const firstSectionIndex = sectionEvents[0]?.index ?? -1;
+  const sections = createEmptySections();
+  const assignedLineIndexes = new Set<number>();
+  const sectionHeaderIndexes = new Set(sectionEvents.map((event) => event.index));
+  let currentSection: SectionName | null = null;
+
+  lines.forEach((line, index) => {
+    const detectedSection = detectSection(line);
+    if (detectedSection) {
+      currentSection = detectedSection;
+      return;
+    }
+
+    if (currentSection) {
+      sections[currentSection].push(line);
+      assignedLineIndexes.add(index);
+    }
+  });
+
+  const contactLineIndexes = getContactLineIndexes(lines, firstSectionIndex);
+  contactLineIndexes.forEach((index) => assignedLineIndexes.add(index));
+
+  const unassignedLines = lines.filter((line, index) => {
+    if (sectionHeaderIndexes.has(index)) {
+      return false;
+    }
+
+    return !assignedLineIndexes.has(index);
+  });
 
   return {
-    contact: parseContact(lines),
+    contact: parseContact(contactLineIndexes.map((index) => lines[index])),
     summary: parseSummary(sections.summary),
-    experience: parseExperienceLikeSection(sections.experience),
+    experience: parseExperienceSection(sections.experience),
     projects: parseProjectSection(sections.projects),
     education: parseEducation(sections.education),
-    skills: parseSkills(sections.skills)
+    skills: parseSkills(sections.skills),
+    unassignedLines,
+    parserDebug: {
+      totalLinesExtracted: lines.length,
+      bulletsDetected,
+      sectionsDetected: sectionEvents.length,
+      droppedLinesCount: 0
+    }
   };
 }
 
-function normalizeLines(text: string): string[] {
-  return text
-    .replace(/\r/g, "")
+export const parseResumeText = parseRawResumeText;
+
+function toContentLines(rawText: string): string[] {
+  return rawText
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
     .split("\n")
-    .map((line) => line.replace(/\t/g, " ").replace(/\s+/g, " ").trim())
+    .map((line) => line.replace(/\t/g, " ").replace(/[ \u00a0]+/g, " ").trim())
     .filter(Boolean);
 }
 
-function splitIntoSections(lines: string[]): Record<SectionName, string[]> {
-  const sections: Record<SectionName, string[]> = {
+function createEmptySections(): ParsedSections {
+  return {
     summary: [],
     experience: [],
     projects: [],
     education: [],
     skills: []
   };
-  let current: SectionName | null = null;
-
-  for (const line of lines) {
-    const section = detectSection(line);
-    if (section) {
-      current = section;
-      continue;
-    }
-
-    if (current) {
-      sections[current].push(line);
-    }
-  }
-
-  return sections;
 }
 
 function detectSection(line: string): SectionName | null {
-  const normalized = line.toLowerCase().replace(/[:|]/g, "").trim();
+  const normalized = normalizeHeader(line);
 
   for (const [section, aliases] of Object.entries(SECTION_ALIASES) as [
     SectionName,
@@ -72,15 +109,26 @@ function detectSection(line: string): SectionName | null {
   return null;
 }
 
+function normalizeHeader(line: string): string {
+  return line
+    .replace(/^[-*•●]\s*/, "")
+    .replace(/[:|]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+function getContactLineIndexes(lines: string[], firstSectionIndex: number): number[] {
+  const end = firstSectionIndex === -1 ? Math.min(lines.length, 4) : firstSectionIndex;
+  return Array.from({ length: Math.max(0, end) }, (_, index) => index);
+}
+
 function parseContact(lines: string[]): Record<string, string> {
-  const firstSectionIndex = lines.findIndex((line) => Boolean(detectSection(line)));
-  const contactLines = lines.slice(0, firstSectionIndex === -1 ? 4 : firstSectionIndex);
-  const joined = contactLines.join(" ");
+  const joined = lines.join(" ");
   const email = joined.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] ?? "";
   const phone = joined.match(/\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/)?.[0] ?? "";
 
   return {
-    name: contactLines[0] ?? "",
+    name: lines[0] ?? "",
     email,
     phone,
     raw: joined
@@ -88,35 +136,42 @@ function parseContact(lines: string[]): Record<string, string> {
 }
 
 function parseSummary(lines: string[]): string {
-  return lines.filter((line) => !isBullet(line)).join(" ").trim();
+  return lines.map(stripBullet).join(" ").trim();
 }
 
-function parseExperienceLikeSection(lines: string[]): ResumeExperience[] {
-  const groups = groupByBulletClusters(lines);
+function parseExperienceSection(lines: string[]): ResumeExperience[] {
+  const groups = groupResumeEntries(lines);
 
   return groups.map((group, index) => {
-    const heading = group.heading;
+    const dates = inferDates(group.heading);
+    const location = inferLocation(group.heading);
+    const headingWithoutMeta = group.heading.filter(
+      (line) => line !== dates && line !== location
+    );
+
     return {
-      company: heading[0] ?? `Experience ${index + 1}`,
-      title: heading[1] ?? "",
-      location: inferLocation(heading),
-      dates: inferDates(heading),
+      company: headingWithoutMeta[0] ?? `Experience ${index + 1}`,
+      title: headingWithoutMeta.slice(1).join(" | "),
+      location,
+      dates,
       bullets: group.bullets
     };
   });
 }
 
 function parseProjectSection(lines: string[]): ResumeProject[] {
-  const groups = groupByBulletClusters(lines);
+  const groups = groupResumeEntries(lines);
 
   return groups.map((group, index) => {
-    const heading = group.heading.join(" | ");
+    const dates = inferDates(group.heading);
+    const headingWithoutDate = group.heading.filter((line) => line !== dates);
+    const heading = headingWithoutDate.join(" | ");
     const [name, techStack] = heading.split("|").map((part) => part.trim());
 
     return {
       name: name || `Project ${index + 1}`,
       techStack,
-      dates: inferDates(group.heading),
+      dates,
       bullets: group.bullets
     };
   });
@@ -127,36 +182,56 @@ function parseEducation(lines: string[]): ResumeEducation[] {
     return [];
   }
 
+  const dates = inferDates(lines);
+  const location = inferLocation(lines);
+  const details = lines.filter((line, index) => index > 1 && line !== dates && line !== location);
+
   return [
     {
       institution: lines[0] ?? "",
       degree: lines[1] ?? "",
-      location: inferLocation(lines),
-      dates: inferDates(lines),
-      details: lines.slice(2)
+      location,
+      dates,
+      details
     }
   ];
 }
 
 function parseSkills(lines: string[]): Record<string, string[]> {
   const skills: Record<string, string[]> = {};
+  let activeCategory = "Skills";
 
   for (const line of lines) {
-    const match = line.match(/^([^:]{2,50}):\s*(.+)$/);
+    const clean = stripBullet(line);
+    const match = clean.match(/^([^:]{2,50}):\s*(.+)$/);
+
     if (match) {
-      skills[match[1].trim()] = splitSkills(match[2]);
+      activeCategory = match[1].trim();
+      skills[activeCategory] = uniqueValues([
+        ...(skills[activeCategory] ?? []),
+        ...splitSkills(match[2])
+      ]);
       continue;
     }
 
-    if (line.includes(",")) {
-      skills["Skills"] = [...(skills.Skills ?? []), ...splitSkills(line)];
+    if (!clean.includes(",") && clean.length <= 42 && /^[A-Za-z /&+#.-]+$/.test(clean)) {
+      activeCategory = clean;
+      skills[activeCategory] = skills[activeCategory] ?? [];
+      continue;
     }
+
+    skills[activeCategory] = uniqueValues([
+      ...(skills[activeCategory] ?? []),
+      ...splitSkills(clean)
+    ]);
   }
 
-  return skills;
+  return Object.fromEntries(
+    Object.entries(skills).filter(([, values]) => values.length > 0)
+  );
 }
 
-function groupByBulletClusters(lines: string[]): Array<{ heading: string[]; bullets: string[] }> {
+function groupResumeEntries(lines: string[]): Array<{ heading: string[]; bullets: string[] }> {
   const groups: Array<{ heading: string[]; bullets: string[] }> = [];
   let heading: string[] = [];
   let bullets: string[] = [];
@@ -167,8 +242,13 @@ function groupByBulletClusters(lines: string[]): Array<{ heading: string[]; bull
       continue;
     }
 
+    if (bullets.length > 0 && looksLikeContinuation(line)) {
+      bullets[bullets.length - 1] = `${bullets[bullets.length - 1]} ${line}`;
+      continue;
+    }
+
     if (bullets.length > 0) {
-      groups.push({ heading, bullets });
+      groups.push({ heading: [...heading], bullets: [...bullets] });
       heading = [line];
       bullets = [];
       continue;
@@ -181,22 +261,41 @@ function groupByBulletClusters(lines: string[]): Array<{ heading: string[]; bull
     groups.push({ heading, bullets });
   }
 
-  return groups.filter((group) => group.bullets.length > 0 || group.heading.length > 0);
+  return groups.filter((group) => group.heading.length > 0 || group.bullets.length > 0);
 }
 
 function isBullet(line: string): boolean {
-  return /^[-*•◦▪●]\s+/.test(line);
+  return /^[•●\-*]\s+/.test(line);
 }
 
 function stripBullet(line: string): string {
-  return line.replace(/^[-*•◦▪●]\s+/, "").trim();
+  return line.replace(/^[•●\-*]\s+/, "").trim();
+}
+
+function looksLikeContinuation(line: string): boolean {
+  return /^[a-z,)]/.test(line) || line.length > 120;
 }
 
 function splitSkills(value: string): string[] {
   return value
-    .split(/,|•|\|/)
+    .split(/,|•|●|\|/)
     .map((skill) => skill.trim())
     .filter(Boolean);
+}
+
+function uniqueValues(values: string[]): string[] {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+
+  for (const value of values) {
+    const normalized = value.toLowerCase();
+    if (!seen.has(normalized)) {
+      seen.add(normalized);
+      unique.push(value);
+    }
+  }
+
+  return unique;
 }
 
 function inferDates(lines: string[]): string {

@@ -3,19 +3,25 @@ import type { ResumeDocument } from "@/lib/types";
 type DocumentResumePreviewProps = {
   doc: ResumeDocument;
   changedPaths: string[];
+  onAssignUnassignedLine: (
+    index: number,
+    target: "summary" | "experience" | "projects" | "education" | "skills"
+  ) => void;
 };
 
-export function DocumentResumePreview({ doc, changedPaths }: DocumentResumePreviewProps) {
+export function DocumentResumePreview({
+  doc,
+  changedPaths,
+  onAssignUnassignedLine
+}: DocumentResumePreviewProps) {
   const changed = new Set(changedPaths);
+  const hasUnassigned = doc.unassignedLines.length > 0;
 
   return (
     <section className="document-preview" aria-label="Parsed resume preview">
       <header className="resume-header-preview">
         <h1>{doc.contact.name || "Parsed Resume"}</h1>
-        <p>
-          {[doc.contact.email, doc.contact.phone].filter(Boolean).join(" | ") ||
-            "Contact details from uploaded resume"}
-        </p>
+        <p>{doc.contact.raw || "Contact details from uploaded resume"}</p>
       </header>
 
       {doc.summary ? (
@@ -52,15 +58,24 @@ export function DocumentResumePreview({ doc, changedPaths }: DocumentResumePrevi
 
       <PreviewSection title="Education">
         {doc.education.map((item, index) => (
-          <div className="preview-entry-heading compact" key={`${item.institution}-${index}`}>
-            <div>
-              <strong>{item.institution}</strong>
-              <span>{item.degree}</span>
+          <div className="preview-entry" key={`${item.institution}-${index}`}>
+            <div className="preview-entry-heading compact">
+              <div>
+                <strong>{item.institution}</strong>
+                <span>{item.degree}</span>
+              </div>
+              <div>
+                <span>{item.dates}</span>
+                <span>{item.location}</span>
+              </div>
             </div>
-            <div>
-              <span>{item.dates}</span>
-              <span>{item.location}</span>
-            </div>
+            {item.details?.length ? (
+              <ul>
+                {item.details.map((detail) => (
+                  <li key={detail}>{detail}</li>
+                ))}
+              </ul>
+            ) : null}
           </div>
         ))}
       </PreviewSection>
@@ -77,6 +92,58 @@ export function DocumentResumePreview({ doc, changedPaths }: DocumentResumePrevi
           ))}
         </div>
       </PreviewSection>
+
+      {hasUnassigned ? (
+        <PreviewSection title="Unassigned Lines">
+          <div className="parser-warning">
+            Some content could not be structured yet
+          </div>
+          <div className="unassigned-list">
+            {doc.unassignedLines.map((line, index) => (
+              <div className="unassigned-line" key={`${line}-${index}`}>
+                <p>{line}</p>
+                <div className="button-row">
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => onAssignUnassignedLine(index, "summary")}
+                  >
+                    Summary
+                  </button>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => onAssignUnassignedLine(index, "experience")}
+                  >
+                    Experience
+                  </button>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => onAssignUnassignedLine(index, "projects")}
+                  >
+                    Projects
+                  </button>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => onAssignUnassignedLine(index, "education")}
+                  >
+                    Education
+                  </button>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => onAssignUnassignedLine(index, "skills")}
+                  >
+                    Skills
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </PreviewSection>
+      ) : null}
     </section>
   );
 }
