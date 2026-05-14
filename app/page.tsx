@@ -319,11 +319,15 @@ export default function Home() {
               <p className="helper-text">DOCX keeps layout editable. PDF is preview and parsing only.</p>
             </div>
 
-            <label className="field" htmlFor="resumeFile">
+            <div className="upload-field">
               <span>Upload file</span>
+              <label className="upload-dropzone" htmlFor="resumeFile">
+                <strong>{isParsing ? "Parsing resume..." : "Choose DOCX or PDF"}</strong>
+                <small>DOCX previews and exports with preserved layout.</small>
+              </label>
               <input
                 accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf,.pdf"
-                className="file-input"
+                className="visually-hidden-file"
                 disabled={isParsing}
                 id="resumeFile"
                 type="file"
@@ -335,7 +339,7 @@ export default function Home() {
                   event.currentTarget.value = "";
                 }}
               />
-            </label>
+            </div>
 
             {uploadedFileName ? (
               <div className="upload-summary">

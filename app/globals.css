@@ -197,6 +197,46 @@ button:disabled {
   width: 100%;
 }
 
+.upload-field {
+  display: grid;
+  gap: 8px;
+}
+
+.upload-field > span {
+  color: var(--text);
+  font-weight: 800;
+}
+
+.visually-hidden-file {
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+.upload-dropzone {
+  background: var(--surface-raised);
+  border: 1px dashed var(--border-strong);
+  border-radius: 8px;
+  color: var(--text);
+  cursor: pointer;
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+}
+
+.upload-dropzone:hover {
+  border-color: var(--accent);
+}
+
+.upload-dropzone small {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
 .field textarea:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.13);
