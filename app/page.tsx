@@ -2,39 +2,45 @@
 
 import { useMemo, useState } from "react";
 import { ChangeReviewQueue } from "@/components/ChangeReviewQueue";
+import { DocumentResumePreview } from "@/components/DocumentResumePreview";
 import { KeywordAnalysis } from "@/components/KeywordAnalysis";
-import { LatexResumePreview } from "@/components/LatexResumePreview";
 import { ScoreCard } from "@/components/ScoreCard";
 import { createLocalAnalysis } from "@/lib/atsScoring";
 import { extractKeywords } from "@/lib/keywordExtractor";
-import {
-  applyActiveChanges,
-  getDefaultLatexResume,
-  parseLatexResume,
-  resumeDocumentToLatex,
-  resumeDocumentToPlainText
-} from "@/lib/latexResume";
+import { applyActiveChanges, resumeDocumentToPlainText } from "@/lib/resumeDocument";
 import {
   generateStructuredChanges,
   validateProposedChanges
 } from "@/lib/structuredOptimizer";
 import type { LocalAnalysis, ProposedChange, ResumeDocument } from "@/lib/types";
 
-type Tab = "preview" | "source" | "changes";
+type ParsedUpload = {
+  document: ResumeDocument;
+  fileName: string;
+  fileType: "docx" | "pdf";
+  rawText: string;
+};
+
+type Tab = "preview" | "changes" | "text";
 
 export default function Home() {
-  const [latexSource, setLatexSource] = useState(getDefaultLatexResume());
+  const [uploadedFileName, setUploadedFileName] = useState("");
+  const [uploadedFileType, setUploadedFileType] = useState<"docx" | "pdf" | "">("");
+  const [originalFileBase64, setOriginalFileBase64] = useState("");
+  const [rawText, setRawText] = useState("");
+  const [baseDoc, setBaseDoc] = useState<ResumeDocument | null>(null);
   const [jobDescription, setJobDescription] = useState("");
-  const [baseDoc, setBaseDoc] = useState<ResumeDocument>(() =>
-    parseLatexResume(getDefaultLatexResume())
-  );
   const [changes, setChanges] = useState<ProposedChange[]>([]);
   const [analysis, setAnalysis] = useState<LocalAnalysis | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("preview");
   const [error, setError] = useState<string | undefined>();
-  const [copyStatus, setCopyStatus] = useState("");
+  const [isParsing, setIsParsing] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
-  const currentDoc = useMemo(() => applyActiveChanges(baseDoc, changes), [baseDoc, changes]);
+  const currentDoc = useMemo(
+    () => (baseDoc ? applyActiveChanges(baseDoc, changes) : null),
+    [baseDoc, changes]
+  );
   const changedPaths = useMemo(
     () =>
       changes
@@ -42,46 +48,76 @@ export default function Home() {
         .map((change) => change.targetPath),
     [changes]
   );
-  const finalLatex = useMemo(
-    () => resumeDocumentToLatex(currentDoc, latexSource),
-    [currentDoc, latexSource]
-  );
+
+  async function handleUpload(file: File) {
+    setError(undefined);
+    setIsParsing(true);
+    setChanges([]);
+    setAnalysis(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("resume", file);
+
+      const [parsedResponse, base64] = await Promise.all([
+        fetch("/api/parse-resume", {
+          method: "POST",
+          body: formData
+        }),
+        readFileAsBase64(file)
+      ]);
+
+      const payload = (await parsedResponse.json()) as ParsedUpload | { error: string };
+      if (!parsedResponse.ok || "error" in payload) {
+        throw new Error("error" in payload ? payload.error : "Could not parse resume.");
+      }
+
+      setUploadedFileName(payload.fileName);
+      setUploadedFileType(payload.fileType);
+      setOriginalFileBase64(base64);
+      setRawText(payload.rawText);
+      setBaseDoc(payload.document);
+      setActiveTab("preview");
+    } catch (uploadError) {
+      setError(
+        uploadError instanceof Error ? uploadError.message : "Could not parse this resume."
+      );
+    } finally {
+      setIsParsing(false);
+    }
+  }
 
   function handleGenerate() {
     setError(undefined);
-    setCopyStatus("");
 
-    if (latexSource.trim().length < 80) {
-      setError("Paste a LaTeX resume source before generating changes.");
+    if (!baseDoc) {
+      setError("Upload a DOCX or PDF resume first.");
       return;
     }
 
     if (jobDescription.trim().length < 80) {
-      setError("Paste a meaningful job description before generating changes.");
+      setError("Paste a meaningful job description before generating replacements.");
       return;
     }
 
-    try {
-      const parsedDoc = parseLatexResume(latexSource);
-      const plainText = resumeDocumentToPlainText(parsedDoc);
-      const keywords = extractKeywords(jobDescription);
-      const nextAnalysis = createLocalAnalysis(plainText, jobDescription, keywords);
-      const rawProposedChanges = generateStructuredChanges(parsedDoc, nextAnalysis);
-      const proposedChanges = validateProposedChanges(rawProposedChanges);
-      if (!proposedChanges) {
-        throw new Error("Invalid structured optimization response.");
-      }
+    const resumeText = resumeDocumentToPlainText(baseDoc);
+    const keywords = extractKeywords(jobDescription);
+    const nextAnalysis = createLocalAnalysis(resumeText, jobDescription, keywords);
+    const proposedChanges = validateProposedChanges(
+      generateStructuredChanges(baseDoc, nextAnalysis)
+    );
 
-      setBaseDoc(parsedDoc);
-      setAnalysis(nextAnalysis);
-      setChanges(proposedChanges);
-      setActiveTab("preview");
+    if (!proposedChanges) {
+      setError("Optimizer returned invalid structured changes. Try again.");
+      return;
+    }
 
-      if (proposedChanges.length === 0) {
-        setError("Parsed the resume, but no safe structured changes were found.");
-      }
-    } catch {
-      setError("Could not parse this LaTeX source. Check that it uses the supported resume commands.");
+    setAnalysis(nextAnalysis);
+    setChanges(proposedChanges);
+    setActiveTab("preview");
+
+    if (proposedChanges.length === 0) {
+      setError("No safe wording replacements were detected for this resume.");
     }
   }
 
@@ -99,41 +135,98 @@ export default function Home() {
     );
   }
 
-  async function handleCopyLatex() {
-    await navigator.clipboard.writeText(finalLatex);
-    setCopyStatus("Copied");
-    window.setTimeout(() => setCopyStatus(""), 1800);
+  async function handleExportDocx() {
+    if (!currentDoc) {
+      return;
+    }
+
+    if (uploadedFileType !== "docx") {
+      setError("DOCX export requires a DOCX upload. PDF support is parsing-only for now.");
+      return;
+    }
+
+    setIsExporting(true);
+    setError(undefined);
+
+    try {
+      const response = await fetch("/api/export-docx", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          originalFileBase64,
+          changes,
+          finalDocument: currentDoc
+        })
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json()) as { error?: string };
+        throw new Error(payload.error ?? "Could not export DOCX.");
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "optimized-resume.docx";
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (exportError) {
+      setError(
+        exportError instanceof Error ? exportError.message : "Could not export DOCX."
+      );
+    } finally {
+      setIsExporting(false);
+    }
   }
 
   return (
-    <main className="app-shell latex-app-shell">
+    <main className="app-shell document-app-shell">
       <header className="app-header">
-        <h1>LaTeX Resume Optimizer</h1>
+        <h1>DOCX Resume Optimizer</h1>
         <p>
-          Paste your LaTeX resume source and a job description. The app parses the
-          resume into structured sections, applies optimized wording directly into
-          the preview, and lets you approve, reject, or manually edit each change.
+          Upload a DOCX resume, parse its sections, generate targeted wording
+          replacements, review the diffs, and export an updated DOCX while preserving
+          the original document package as much as possible. PDF upload is supported
+          for parsing and review only.
         </p>
       </header>
 
       <section className="workspace-grid">
         <aside className="panel source-panel">
           <div>
-            <h2>Inputs</h2>
+            <h2>Resume Upload</h2>
             <p className="helper-text">
-              Supports the common resume template commands for this MVP.
+              DOCX is editable/exportable. PDF is parse-only for this MVP.
             </p>
           </div>
 
-          <label className="field" htmlFor="latexSource">
-            <span>LaTeX resume source</span>
-            <textarea
-              id="latexSource"
-              className="code-textarea"
-              value={latexSource}
-              onChange={(event) => setLatexSource(event.target.value)}
+          <label className="field" htmlFor="resumeFile">
+            <span>Resume file</span>
+            <input
+              accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf,.pdf"
+              className="file-input"
+              disabled={isParsing}
+              id="resumeFile"
+              type="file"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) {
+                  handleUpload(file);
+                }
+                event.currentTarget.value = "";
+              }}
             />
           </label>
+
+          {uploadedFileName ? (
+            <div className="upload-summary">
+              <strong>{uploadedFileName}</strong>
+              <span>{uploadedFileType.toUpperCase()}</span>
+            </div>
+          ) : null}
 
           <label className="field" htmlFor="jobDescription">
             <span>Job description</span>
@@ -147,8 +240,22 @@ export default function Home() {
 
           {error ? <p className="error-text">{error}</p> : null}
 
-          <button className="primary-button" type="button" onClick={handleGenerate}>
-            Generate Optimized Resume
+          <button
+            className="primary-button"
+            disabled={isParsing}
+            type="button"
+            onClick={handleGenerate}
+          >
+            {isParsing ? "Parsing Resume..." : "Generate Optimized Replacements"}
+          </button>
+
+          <button
+            className="secondary-button"
+            disabled={!currentDoc || isExporting}
+            type="button"
+            onClick={handleExportDocx}
+          >
+            {isExporting ? "Exporting..." : "Export Updated DOCX"}
           </button>
         </aside>
 
@@ -162,41 +269,27 @@ export default function Home() {
               Preview
             </button>
             <button
-              className={activeTab === "source" ? "active" : ""}
-              type="button"
-              onClick={() => setActiveTab("source")}
-            >
-              LaTeX Source
-            </button>
-            <button
               className={activeTab === "changes" ? "active" : ""}
               type="button"
               onClick={() => setActiveTab("changes")}
             >
               Change Review
             </button>
+            <button
+              className={activeTab === "text" ? "active" : ""}
+              type="button"
+              onClick={() => setActiveTab("text")}
+            >
+              Parsed Text
+            </button>
           </div>
 
           {activeTab === "preview" ? (
-            <LatexResumePreview doc={currentDoc} changedPaths={changedPaths} />
-          ) : null}
-
-          {activeTab === "source" ? (
-            <section className="latex-source-panel">
-              <div className="optimization-header">
-                <div>
-                  <h2>Final LaTeX</h2>
-                  <p className="helper-text">
-                    This source reflects pending, approved, and manual changes. Rejected
-                    changes are excluded.
-                  </p>
-                </div>
-                <button className="secondary-button" type="button" onClick={handleCopyLatex}>
-                  {copyStatus || "Copy Final LaTeX"}
-                </button>
-              </div>
-              <pre>{finalLatex}</pre>
-            </section>
+            currentDoc ? (
+              <DocumentResumePreview doc={currentDoc} changedPaths={changedPaths} />
+            ) : (
+              <EmptyState />
+            )
           ) : null}
 
           {activeTab === "changes" ? (
@@ -206,6 +299,13 @@ export default function Home() {
               onManualEdit={handleManualEdit}
               onReject={(id) => updateChangeStatus(id, "rejected")}
             />
+          ) : null}
+
+          {activeTab === "text" ? (
+            <section className="parsed-text-panel">
+              <h2>Parsed Resume Text</h2>
+              <pre>{rawText || "Upload a resume to see extracted text."}</pre>
+            </section>
           ) : null}
         </section>
       </section>
@@ -220,4 +320,28 @@ export default function Home() {
       ) : null}
     </main>
   );
+}
+
+function EmptyState() {
+  return (
+    <section className="empty-state">
+      <h2>Upload a resume to begin</h2>
+      <p className="helper-text">
+        The parsed resume preview will appear here, then optimized wording will be
+        inserted directly into the preview as reviewable changes.
+      </p>
+    </section>
+  );
+}
+
+function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result ?? "");
+      resolve(result.includes(",") ? result.split(",")[1] : result);
+    };
+    reader.onerror = () => reject(new Error("Could not read uploaded file."));
+    reader.readAsDataURL(file);
+  });
 }

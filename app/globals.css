@@ -464,7 +464,7 @@ button:disabled {
   padding: 4px 8px 4px 10px;
 }
 
-.latex-app-shell {
+.document-app-shell {
   max-width: 1440px;
 }
 
@@ -527,7 +527,7 @@ button:disabled {
   color: var(--text);
 }
 
-.latex-preview {
+.document-preview {
   background: #ffffff;
   border: 1px solid var(--border);
   border-radius: 4px;
@@ -540,6 +540,42 @@ button:disabled {
   min-height: 960px;
   padding: 46px 56px;
   width: 100%;
+}
+
+.upload-summary {
+  align-items: center;
+  background: #fbfdff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 12px;
+}
+
+.upload-summary span {
+  background: var(--surface-soft);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 800;
+  padding: 5px 9px;
+}
+
+.empty-state {
+  align-content: center;
+  background: #fbfdff;
+  border: 1px dashed var(--border-strong);
+  border-radius: 8px;
+  display: grid;
+  justify-items: center;
+  min-height: 520px;
+  padding: 28px;
+  text-align: center;
+}
+
+.empty-state h2 {
+  margin: 0;
 }
 
 .resume-header-preview {
@@ -637,12 +673,12 @@ button:disabled {
   box-shadow: 0 0 0 3px #ecfdf5;
 }
 
-.latex-source-panel {
+.parsed-text-panel {
   display: grid;
   gap: 14px;
 }
 
-.latex-source-panel pre {
+.parsed-text-panel pre {
   background: #101827;
   border-radius: 8px;
   color: #e5edf7;
@@ -765,7 +801,7 @@ button:disabled {
     padding: 24px;
   }
 
-  .latex-preview {
+  .document-preview {
     min-height: 0;
     padding: 28px 22px;
   }
