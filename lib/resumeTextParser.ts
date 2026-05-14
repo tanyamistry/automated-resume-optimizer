@@ -14,13 +14,46 @@ const SECTION_ALIASES = {
   skills: ["skills", "technical skills", "technologies", "core skills"]
 } as const;
 
+const BULLET_STARTERS = [
+  "achieved",
+  "analyzed",
+  "architected",
+  "automated",
+  "built",
+  "collaborated",
+  "created",
+  "decreased",
+  "delivered",
+  "deployed",
+  "designed",
+  "developed",
+  "drove",
+  "enabled",
+  "engineered",
+  "implemented",
+  "improved",
+  "increased",
+  "integrated",
+  "led",
+  "managed",
+  "migrated",
+  "modeled",
+  "optimized",
+  "owned",
+  "partnered",
+  "reduced",
+  "streamlined",
+  "supported"
+];
+
 type SectionName = keyof typeof SECTION_ALIASES;
 
 type ParsedSections = Record<SectionName, string[]>;
 
 export function parseRawResumeText(rawText: string): ResumeDocument {
   const lines = toContentLines(rawText);
-  const bulletsDetected = lines.filter(isBullet).length;
+  const bulletsDetected = lines.filter((line) => isBullet(line) || looksLikeImplicitBullet(line))
+    .length;
   const sectionEvents = lines
     .map((line, index) => ({ index, section: detectSection(line) }))
     .filter((event): event is { index: number; section: SectionName } =>
@@ -242,6 +275,11 @@ function groupResumeEntries(lines: string[]): Array<{ heading: string[]; bullets
       continue;
     }
 
+    if (heading.length > 0 && looksLikeImplicitBullet(line)) {
+      bullets.push(stripBullet(line));
+      continue;
+    }
+
     if (bullets.length > 0 && looksLikeContinuation(line)) {
       bullets[bullets.length - 1] = `${bullets[bullets.length - 1]} ${line}`;
       continue;
@@ -274,6 +312,15 @@ function stripBullet(line: string): string {
 
 function looksLikeContinuation(line: string): boolean {
   return /^[a-z,)]/.test(line) || line.length > 120;
+}
+
+function looksLikeImplicitBullet(line: string): boolean {
+  if (line.length < 35) {
+    return false;
+  }
+
+  const firstWord = line.match(/^[A-Za-z]+/)?.[0].toLowerCase();
+  return Boolean(firstWord && BULLET_STARTERS.includes(firstWord));
 }
 
 function splitSkills(value: string): string[] {

@@ -15,9 +15,9 @@ export function ChangeReviewQueue({
 }: ChangeReviewQueueProps) {
   if (changes.length === 0) {
     return (
-      <section className="panel">
+      <section className="empty-review-state">
         <h2>Change Review</h2>
-        <p className="helper-text">No structured changes yet. Generate an optimized resume first.</p>
+        <p className="helper-text">No review cards yet. Generate changes after uploading a resume and job description.</p>
       </section>
     );
   }
