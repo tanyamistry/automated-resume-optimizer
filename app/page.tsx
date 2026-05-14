@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChangeReviewQueue } from "@/components/ChangeReviewQueue";
 import { DocumentResumePreview } from "@/components/DocumentResumePreview";
 import { KeywordAnalysis } from "@/components/KeywordAnalysis";
@@ -22,6 +22,7 @@ type ParsedUpload = {
 };
 
 type Tab = "preview" | "changes" | "text";
+type Theme = "light" | "dark";
 
 export default function Home() {
   const [uploadedFileName, setUploadedFileName] = useState("");
@@ -36,6 +37,7 @@ export default function Home() {
   const [error, setError] = useState<string | undefined>();
   const [isParsing, setIsParsing] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [theme, setTheme] = useState<Theme>("light");
 
   const currentDoc = useMemo(
     () => (baseDoc ? applyActiveChanges(baseDoc, changes) : null),
@@ -52,6 +54,24 @@ export default function Home() {
     currentDoc && currentDoc.unassignedLines.length > 0
       ? "Some content could not be structured yet"
       : undefined;
+
+  useEffect(() => {
+    const savedTheme = window.localStorage.getItem("resumeOptimizerTheme");
+    const systemPrefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const nextTheme = savedTheme === "dark" || (!savedTheme && systemPrefersDark) ? "dark" : "light";
+
+    setTheme(nextTheme);
+    document.documentElement.dataset.theme = nextTheme;
+  }, []);
+
+  function handleToggleTheme() {
+    setTheme((current) => {
+      const nextTheme = current === "dark" ? "light" : "dark";
+      document.documentElement.dataset.theme = nextTheme;
+      window.localStorage.setItem("resumeOptimizerTheme", nextTheme);
+      return nextTheme;
+    });
+  }
 
   async function handleUpload(file: File) {
     setError(undefined);
@@ -298,7 +318,12 @@ export default function Home() {
   return (
     <main className="app-shell document-app-shell">
       <header className="app-header">
-        <h1>DOCX Resume Optimizer</h1>
+        <div className="app-header-top">
+          <h1>DOCX Resume Optimizer</h1>
+          <button className="theme-toggle" type="button" onClick={handleToggleTheme}>
+            {theme === "dark" ? "Light Mode" : "Dark Mode"}
+          </button>
+        </div>
         <p>
           Upload a DOCX resume, parse its sections, generate targeted wording
           replacements, review the diffs, and export an updated DOCX while preserving
