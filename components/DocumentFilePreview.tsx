@@ -7,6 +7,7 @@ type DocumentFilePreviewProps = {
   fileName: string;
   fileType: "docx" | "pdf" | "";
   isUpdating?: boolean;
+  layout?: "continuous" | "pages";
   pdfUrl?: string;
 };
 
@@ -15,6 +16,7 @@ export function DocumentFilePreview({
   fileName,
   fileType,
   isUpdating = false,
+  layout = "continuous",
   pdfUrl
 }: DocumentFilePreviewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -44,11 +46,11 @@ export function DocumentFilePreview({
       try {
         const { renderAsync } = await import("docx-preview");
         await renderAsync(buffer, targetContainer, undefined, {
-          breakPages: true,
+          breakPages: layout === "pages",
           className: "docx-rendered",
           experimental: true,
           ignoreFonts: false,
-          ignoreHeight: false,
+          ignoreHeight: layout === "continuous",
           ignoreLastRenderedPageBreak: true,
           ignoreWidth: false,
           inWrapper: true,
@@ -77,7 +79,7 @@ export function DocumentFilePreview({
       isCancelled = true;
       container.innerHTML = "";
     };
-  }, [docxBuffer, fileType]);
+  }, [docxBuffer, fileType, layout]);
 
   if (!fileName) {
     return (
@@ -109,7 +111,7 @@ export function DocumentFilePreview({
   }
 
   return (
-    <section className="docx-preview-shell">
+    <section className={`docx-preview-shell ${layout === "continuous" ? "continuous-preview" : "paged-preview"}`}>
       {(isRendering || isUpdating) && (
         <div className="preview-status" role="status">
           {isUpdating ? "Applying edits to DOCX preview..." : "Rendering DOCX preview..."}

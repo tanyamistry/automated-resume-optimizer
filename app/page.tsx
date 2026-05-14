@@ -20,6 +20,7 @@ type ParsedUpload = {
 };
 
 type Theme = "light" | "dark";
+type PreviewLayout = "continuous" | "pages";
 
 const DOCX_MIME =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -40,6 +41,7 @@ export default function Home() {
   const [isPreviewUpdating, setIsPreviewUpdating] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [theme, setTheme] = useState<Theme>("light");
+  const [previewLayout, setPreviewLayout] = useState<PreviewLayout>("continuous");
 
   const currentDoc = useMemo(
     () => (baseDoc ? applyActiveChanges(baseDoc, changes) : null),
@@ -390,6 +392,22 @@ export default function Home() {
                 <span>{approvedCount} approved</span>
               </div>
             ) : null}
+            <div className="segmented-control" aria-label="Preview layout">
+              <button
+                className={previewLayout === "continuous" ? "active" : ""}
+                type="button"
+                onClick={() => setPreviewLayout("continuous")}
+              >
+                Continuous
+              </button>
+              <button
+                className={previewLayout === "pages" ? "active" : ""}
+                type="button"
+                onClick={() => setPreviewLayout("pages")}
+              >
+                Pages
+              </button>
+            </div>
           </div>
 
           <DocumentFilePreview
@@ -397,6 +415,7 @@ export default function Home() {
             fileName={uploadedFileName}
             fileType={uploadedFileType}
             isUpdating={isPreviewUpdating}
+            layout={previewLayout}
             pdfUrl={pdfPreviewUrl}
           />
         </section>
