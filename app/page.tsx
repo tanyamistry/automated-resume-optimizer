@@ -1,244 +1,222 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { DiffView } from "@/components/DiffView";
+import { ChangeReviewQueue } from "@/components/ChangeReviewQueue";
 import { KeywordAnalysis } from "@/components/KeywordAnalysis";
-import { ResumePreview } from "@/components/ResumePreview";
-import { ResumeInput } from "@/components/ResumeInput";
+import { LatexResumePreview } from "@/components/LatexResumePreview";
 import { ScoreCard } from "@/components/ScoreCard";
 import { createLocalAnalysis } from "@/lib/atsScoring";
 import { extractKeywords } from "@/lib/keywordExtractor";
 import {
-  applyApprovedEdits,
-  createApprovedSectionsText
-} from "@/lib/resumeAssembler";
-import type { LocalAnalysis, OptimizationResult } from "@/lib/types";
+  applyActiveChanges,
+  getDefaultLatexResume,
+  parseLatexResume,
+  resumeDocumentToLatex,
+  resumeDocumentToPlainText
+} from "@/lib/latexResume";
+import {
+  generateStructuredChanges,
+  validateProposedChanges
+} from "@/lib/structuredOptimizer";
+import type { LocalAnalysis, ProposedChange, ResumeDocument } from "@/lib/types";
+
+type Tab = "preview" | "source" | "changes";
 
 export default function Home() {
-  const [resumeText, setResumeText] = useState("");
+  const [latexSource, setLatexSource] = useState(getDefaultLatexResume());
   const [jobDescription, setJobDescription] = useState("");
+  const [baseDoc, setBaseDoc] = useState<ResumeDocument>(() =>
+    parseLatexResume(getDefaultLatexResume())
+  );
+  const [changes, setChanges] = useState<ProposedChange[]>([]);
   const [analysis, setAnalysis] = useState<LocalAnalysis | null>(null);
-  const [optimization, setOptimization] = useState<OptimizationResult | null>(null);
+  const [activeTab, setActiveTab] = useState<Tab>("preview");
   const [error, setError] = useState<string | undefined>();
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [isOptimizing, setIsOptimizing] = useState(false);
-  const [isExtracting, setIsExtracting] = useState(false);
-  const [approvedBulletIndexes, setApprovedBulletIndexes] = useState<number[]>([]);
   const [copyStatus, setCopyStatus] = useState("");
 
-  const canOptimize = useMemo(
-    () => resumeText.trim().length >= 80 && jobDescription.trim().length >= 80,
-    [resumeText, jobDescription]
+  const currentDoc = useMemo(() => applyActiveChanges(baseDoc, changes), [baseDoc, changes]);
+  const changedPaths = useMemo(
+    () =>
+      changes
+        .filter((change) => change.status !== "rejected")
+        .map((change) => change.targetPath),
+    [changes]
   );
-  const previewText = useMemo(() => {
-    if (!optimization) {
-      return resumeText;
-    }
+  const finalLatex = useMemo(
+    () => resumeDocumentToLatex(currentDoc, latexSource),
+    [currentDoc, latexSource]
+  );
 
-    return applyApprovedEdits(
-      resumeText,
-      optimization,
-      approvedBulletIndexes,
-      true,
-      true
-    );
-  }, [approvedBulletIndexes, optimization, resumeText]);
-
-  async function handleAnalyze() {
+  function handleGenerate() {
     setError(undefined);
-    setOptimization(null);
-    setApprovedBulletIndexes([]);
     setCopyStatus("");
 
-    if (!canOptimize) {
-      setError("Paste at least a few resume bullets and a meaningful job description first.");
+    if (latexSource.trim().length < 80) {
+      setError("Paste a LaTeX resume source before generating changes.");
       return;
     }
 
-    setIsAnalyzing(true);
-    const keywords = extractKeywords(jobDescription);
-    const nextAnalysis = createLocalAnalysis(resumeText, jobDescription, keywords);
-    setAnalysis(nextAnalysis);
-    setIsAnalyzing(false);
+    if (jobDescription.trim().length < 80) {
+      setError("Paste a meaningful job description before generating changes.");
+      return;
+    }
 
-    await requestOptimization(nextAnalysis);
-  }
-
-  async function requestOptimization(nextAnalysis: LocalAnalysis) {
-    setIsOptimizing(true);
     try {
-      const response = await fetch("/api/optimize", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          resumeText,
-          jobDescription,
-          analysis: nextAnalysis
-        })
-      });
-
-      const payload = (await response.json()) as
-        | { result: OptimizationResult }
-        | { error: string };
-
-      if (!response.ok || "error" in payload) {
-        throw new Error("error" in payload ? payload.error : "Optimization failed.");
+      const parsedDoc = parseLatexResume(latexSource);
+      const plainText = resumeDocumentToPlainText(parsedDoc);
+      const keywords = extractKeywords(jobDescription);
+      const nextAnalysis = createLocalAnalysis(plainText, jobDescription, keywords);
+      const rawProposedChanges = generateStructuredChanges(parsedDoc, nextAnalysis);
+      const proposedChanges = validateProposedChanges(rawProposedChanges);
+      if (!proposedChanges) {
+        throw new Error("Invalid structured optimization response.");
       }
 
-      setOptimization(payload.result);
-      setApprovedBulletIndexes([]);
-    } catch (requestError) {
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Unable to optimize right now."
-      );
-    } finally {
-      setIsOptimizing(false);
+      setBaseDoc(parsedDoc);
+      setAnalysis(nextAnalysis);
+      setChanges(proposedChanges);
+      setActiveTab("preview");
+
+      if (proposedChanges.length === 0) {
+        setError("Parsed the resume, but no safe structured changes were found.");
+      }
+    } catch {
+      setError("Could not parse this LaTeX source. Check that it uses the supported resume commands.");
     }
   }
 
-  async function handleCopy() {
-    if (!optimization) {
-      return;
-    }
-
-    await navigator.clipboard.writeText(
-      createApprovedSectionsText(optimization, approvedBulletIndexes)
+  function updateChangeStatus(id: string, status: ProposedChange["status"]) {
+    setChanges((current) =>
+      current.map((change) => (change.id === id ? { ...change, status } : change))
     );
+  }
+
+  function handleManualEdit(id: string, value: string) {
+    setChanges((current) =>
+      current.map((change) =>
+        change.id === id ? { ...change, optimized: value, status: "manual" } : change
+      )
+    );
+  }
+
+  async function handleCopyLatex() {
+    await navigator.clipboard.writeText(finalLatex);
     setCopyStatus("Copied");
     window.setTimeout(() => setCopyStatus(""), 1800);
   }
 
-  async function handleResumeUpload(file: File) {
-    setError(undefined);
-    setIsExtracting(true);
-
-    try {
-      const formData = new FormData();
-      formData.append("resume", file);
-
-      const response = await fetch("/api/extract-resume", {
-        method: "POST",
-        body: formData
-      });
-      const payload = (await response.json()) as { text?: string; error?: string };
-
-      if (!response.ok || !payload.text) {
-        throw new Error(payload.error ?? "Could not extract text from this PDF.");
-      }
-
-      setResumeText(payload.text);
-      setAnalysis(null);
-      setOptimization(null);
-      setApprovedBulletIndexes([]);
-    } catch (uploadError) {
-      setError(
-        uploadError instanceof Error
-          ? uploadError.message
-          : "Could not extract text from this PDF."
-      );
-    } finally {
-      setIsExtracting(false);
-    }
-  }
-
-  function handleToggleBullet(index: number) {
-    setApprovedBulletIndexes((current) =>
-      current.includes(index)
-        ? current.filter((item) => item !== index)
-        : [...current, index].sort((a, b) => a - b)
-    );
-  }
-
-  function handleToggleAllBullets() {
-    if (!optimization) {
-      return;
-    }
-
-    setApprovedBulletIndexes((current) =>
-      current.length === optimization.bulletEdits.length
-        ? []
-        : optimization.bulletEdits.map((_, index) => index)
-    );
-  }
-
-  function handleDownload() {
-    if (!optimization) {
-      return;
-    }
-
-    const optimizedResume = applyApprovedEdits(
-      resumeText,
-      optimization,
-      approvedBulletIndexes,
-      true,
-      true
-    );
-    const blob = new Blob([optimizedResume], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = "optimized-resume.txt";
-    anchor.click();
-    URL.revokeObjectURL(url);
-  }
-
   return (
-    <main className="app-shell">
+    <main className="app-shell latex-app-shell">
       <header className="app-header">
-        <h1>Resume ATS Optimizer</h1>
+        <h1>LaTeX Resume Optimizer</h1>
         <p>
-          Paste your Google Docs resume text and a target job description. The app
-          can read a PDF resume, score keyword coverage locally, then create
-          conservative suggestions that you approve before downloading.
+          Paste your LaTeX resume source and a job description. The app parses the
+          resume into structured sections, applies optimized wording directly into
+          the preview, and lets you approve, reject, or manually edit each change.
         </p>
       </header>
 
-      <ResumeInput
-        error={error}
-        isAnalyzing={isAnalyzing}
-        isExtracting={isExtracting}
-        isOptimizing={isOptimizing}
-        jobDescription={jobDescription}
-        resumeText={resumeText}
-        onAnalyze={handleAnalyze}
-        onJobDescriptionChange={setJobDescription}
-        onResumeUpload={handleResumeUpload}
-        onResumeChange={setResumeText}
-      />
-
-      {analysis ? (
-        <div className="results-grid">
-          <div className="summary-grid">
-            <ScoreCard
-              afterEstimate={optimization?.atsScoreAfterEstimate}
-              score={analysis.score}
-            />
-            <KeywordAnalysis analysis={analysis} />
+      <section className="workspace-grid">
+        <aside className="panel source-panel">
+          <div>
+            <h2>Inputs</h2>
+            <p className="helper-text">
+              Supports the common resume template commands for this MVP.
+            </p>
           </div>
 
-          {optimization ? (
-            <>
-              <ResumePreview
-                approvedBulletIndexes={approvedBulletIndexes}
-                optimization={optimization}
-                previewText={previewText}
-              />
-              <DiffView
-                approvedBulletIndexes={approvedBulletIndexes}
-                copyStatus={copyStatus}
-                result={optimization}
-                onCopy={handleCopy}
-                onDownload={handleDownload}
-                onToggleAllBullets={handleToggleAllBullets}
-                onToggleBullet={handleToggleBullet}
-              />
-            </>
+          <label className="field" htmlFor="latexSource">
+            <span>LaTeX resume source</span>
+            <textarea
+              id="latexSource"
+              className="code-textarea"
+              value={latexSource}
+              onChange={(event) => setLatexSource(event.target.value)}
+            />
+          </label>
+
+          <label className="field" htmlFor="jobDescription">
+            <span>Job description</span>
+            <textarea
+              id="jobDescription"
+              placeholder="Paste the target job description..."
+              value={jobDescription}
+              onChange={(event) => setJobDescription(event.target.value)}
+            />
+          </label>
+
+          {error ? <p className="error-text">{error}</p> : null}
+
+          <button className="primary-button" type="button" onClick={handleGenerate}>
+            Generate Optimized Resume
+          </button>
+        </aside>
+
+        <section className="panel preview-workspace">
+          <div className="tab-bar" role="tablist" aria-label="Resume workspace tabs">
+            <button
+              className={activeTab === "preview" ? "active" : ""}
+              type="button"
+              onClick={() => setActiveTab("preview")}
+            >
+              Preview
+            </button>
+            <button
+              className={activeTab === "source" ? "active" : ""}
+              type="button"
+              onClick={() => setActiveTab("source")}
+            >
+              LaTeX Source
+            </button>
+            <button
+              className={activeTab === "changes" ? "active" : ""}
+              type="button"
+              onClick={() => setActiveTab("changes")}
+            >
+              Change Review
+            </button>
+          </div>
+
+          {activeTab === "preview" ? (
+            <LatexResumePreview doc={currentDoc} changedPaths={changedPaths} />
           ) : null}
-        </div>
+
+          {activeTab === "source" ? (
+            <section className="latex-source-panel">
+              <div className="optimization-header">
+                <div>
+                  <h2>Final LaTeX</h2>
+                  <p className="helper-text">
+                    This source reflects pending, approved, and manual changes. Rejected
+                    changes are excluded.
+                  </p>
+                </div>
+                <button className="secondary-button" type="button" onClick={handleCopyLatex}>
+                  {copyStatus || "Copy Final LaTeX"}
+                </button>
+              </div>
+              <pre>{finalLatex}</pre>
+            </section>
+          ) : null}
+
+          {activeTab === "changes" ? (
+            <ChangeReviewQueue
+              changes={changes}
+              onApprove={(id) => updateChangeStatus(id, "approved")}
+              onManualEdit={handleManualEdit}
+              onReject={(id) => updateChangeStatus(id, "rejected")}
+            />
+          ) : null}
+        </section>
+      </section>
+
+      {analysis ? (
+        <section className="results-grid">
+          <div className="summary-grid">
+            <ScoreCard score={analysis.score} />
+            <KeywordAnalysis analysis={analysis} />
+          </div>
+        </section>
       ) : null}
     </main>
   );

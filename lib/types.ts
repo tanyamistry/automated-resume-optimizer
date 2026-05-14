@@ -63,3 +63,48 @@ export type OptimizeRequest = {
   jobDescription: string;
   analysis: LocalAnalysis;
 };
+
+export type ResumeDocument = {
+  contact: Record<string, string>;
+  summary: string;
+  experience: ResumeExperience[];
+  projects: ResumeProject[];
+  education: ResumeEducation[];
+  skills: Record<string, string[]>;
+};
+
+export type ResumeExperience = {
+  company: string;
+  title: string;
+  location: string;
+  dates: string;
+  bullets: string[];
+};
+
+export type ResumeProject = {
+  name: string;
+  techStack?: string;
+  dates?: string;
+  bullets: string[];
+};
+
+export type ResumeEducation = {
+  institution: string;
+  degree: string;
+  location: string;
+  dates: string;
+  details?: string[];
+};
+
+export type ProposedChangeStatus = "pending" | "approved" | "rejected" | "manual";
+
+export type ProposedChange = {
+  id: string;
+  section: "summary" | "experience" | "projects" | "skills";
+  targetPath: string;
+  original: string;
+  optimized: string;
+  keywordsAdded: string[];
+  reason: string;
+  status: ProposedChangeStatus;
+};
